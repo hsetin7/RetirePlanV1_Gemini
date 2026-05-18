@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retirement Forecast Trajectory Engine</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #f1f5f9;
+            --card-bg: #ffffff;
+            --primary: #0f172a;
+            --border: #e2e8f0;
+            --text-main: #334155;
+            --text-muted: #64748b;
+            
+            --color-target: #dc2626;     /* Crimson Red */
+            --color-rrsp: #1e3a8a;       /* Deep Navy Blue */
+            --color-tfsa: #0d9488;       /* Clean Teal */
+            --color-other-sav: #7c3aed;  /* Rich Violet */
+            --color-cpp: #b45309;        /* Warm Amber */
+            --color-other-inc: #065f46;  /* Forest Green */
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 10px 15px;
+            font-size: 13px;
+        }
+
+        .container {
+            max-width: 1450px;
+            margin: 0 auto;
+        }
+
+        .top-inputs-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        @media (max-width: 1024px) {
+            .top-inputs-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+        }
+
+        .section-title {
+            font-size: 14px;
+            color: var(--primary);
+            margin-top: 0;
+            margin-bottom: 10px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+        }
+
+        .row-inputs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        .form-control {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        input[type="text"], input[type="number"] {
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--primary);
+            background-color: #fff;
+        }
+
+        .asset-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .asset-table th {
+            text-align: left;
+            padding: 4px 6px;
+            background-color: #f8fafc;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .asset-table td {
+            padding: 4px 6px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+
+        .sync-flex {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sync-flex input[type="range"] {
+            flex: 1;
+            height: 4px;
+        }
+
+        .sync-flex input[type="number"] {
+            width: 70px;
+            padding: 4px;
+            font-size: 11px;
+        }
+
+        .field-note {
+            font-size: 10px;
+            color: var(--text-muted);
+            line-height: 1.2;
+        }
+
+        .output-container-grid {
+            display: grid;
+            grid-template-columns: 0.35fr 1.65fr;
+            gap: 15px;
+            align-items: stretch;
+        }
+
+        @media (max-width: 900px) {
+            .output-container-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .side-status-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 15px;
+        }
+
+        .forecast-header {
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: var(--primary);
+        }
+
+        .forecast-sub {
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-muted);
+            margin-bottom: 15px;
+        }
+
+        .custom-legend-matrix {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .legend-box {
+            width: 24px;
+            height: 12px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .legend-dash {
+            width: 24px;
+            height: 0;
+            border-top: 3px dashed var(--color-target);
+            flex-shrink: 0;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: calc(100vh - 270px);
+            min-height: 380px;
+            width: 100%;
+        }
+
+        .btn-excel {
+            background-color: #16a34a;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.15s ease;
+            box-shadow: 0 2px 4px rgba(22, 163, 74, 0.15);
+        }
+
+        .btn-excel:hover {
+            background-color: #15803d;
+        }
+
+        .disclaimer-container {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+            font-size: 10px;
+            color: #94a3b8;
+            line-height: 1.4;
+            text-align: justify;
+        }
+
+        .signature-footer {
+            margin-top: 8px;
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .signature-footer a {
+            color: #0284c7;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <div class="top-inputs-grid">
+        
+        <div class="card">
+            <div class="section-title">1. Personal Profile & Financial Timelines</div>
+            <div class="row-inputs">
+                <div class="form-control">
+                    <label for="userName">User Name</label>
+                    <input type="text" id="userName" value="Your Name">
+                </div>
+                <div class="form-control">
+                    <label for="currentAge">Current Age</label>
+                    <input type="number" id="currentAge" value="40" min="18" max="94">
+                </div>
+                <div class="form-control">
+                    <label for="retirementAge">Retirement Age</label>
+                    <input type="number" id="retirementAge" value="65" min="19" max="95">
+                </div>
+                <div class="form-control">
+                    <label for="lifeExpectancy">Life Expectancy</label>
+                    <input type="number" id="lifeExpectancy" value="90" min="50" max="110">
+                </div>
+            </div>
+            <div class="row-inputs" style="margin-top: 4px;">
+                <div class="form-control">
+                    <label for="currentIncome">Current Income ($)</label>
+                    <input type="number" id="currentIncome" value="0" step="1000">
+                </div>
+                <div class="form-control">
+                    <label for="desiredIncome">Desired Ret. Income ($)</label>
+                    <input type="number" id="desiredIncome" value="0" step="1000">
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">2. Account Balances & Annual Savings Targets</div>
+            <table class="asset-table">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Layer</th>
+                        <th style="width: 30%;">Current Bal ($)</th>
+                        <th style="width: 45%;">Annual Savings Target ($)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong style="color: var(--color-rrsp);">RRSP</strong></td>
+                        <td><input type="number" id="currentRRSP" value="0" style="width:85%; padding:3px;"></td>
+                        <td>
+                            <div class="sync-flex">
+                                <input type="range" id="sliderRRSP" min="0" max="40000" step="500" value="0">
+                                <input type="number" id="inputRRSP" min="0" max="150000" value="0">
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong style="color: var(--color-tfsa);">TFSA</strong></td>
+                        <td><input type="number" id="currentTFSA" value="0" style="width:85%; padding:3px;"></td>
+                        <td>
+                            <div class="sync-flex">
+                                <input type="range" id="sliderTFSA" min="0" max="25000" step="500" value="0">
+                                <input type="number" id="inputTFSA" min="0" max="75000" value="0">
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong style="color: var(--color-other-sav);">Other</strong></td>
+                        <td><input type="number" id="currentOther" value="0" style="width:85%; padding:3px;"></td>
+                        <td>
+                            <div class="sync-flex">
+                                <input type="range" id="sliderOther" min="0" max="50000" step="1000" value="0">
+                                <input type="number" id="inputOther" min="0" max="250000" value="0">
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="section-title">3. Post-Retirement Inflows & Assumptions</div>
+            <div class="row-inputs">
+                <div class="form-control">
+                    <label for="cppIncome">Est. Annual CPP/OAS ($)</label>
+                    <input type="number" id="cppIncome" value="14000">
+                </div>
+                <div class="form-control">
+                    <label for="otherInflows">Other Annual Inflows ($)*</label>
+                    <input type="number" id="otherInflows" value="0">
+                    <span class="field-note">* Rental revenues, corporate pensions, or family payouts.</span>
+                </div>
+            </div>
+            <div class="row-inputs" style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--border);">
+                <div class="form-control">
+                    <label for="rateAccum">Pre-Ret. Growth (%)</label>
+                    <input type="number" id="rateAccum" value="5.5" step="0.1">
+                </div>
+                <div class="form-control">
+                    <label for="rateDecum">In-Ret. Growth (%)</label>
+                    <input type="number" id="rateDecum" value="4.0" step="0.1">
+                </div>
+                <div class="form-control">
+                    <label for="rateInflation">Inflation Rate (%)</label>
+                    <input type="number" id="rateInflation" value="2.5" step="0.1">
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card output-container-grid">
+        
+        <div class="side-status-card">
+            <div id="forecastHeader" class="forecast-header">Analyzing...</div>
+            <div id="forecastSubtext" class="forecast-sub">Processing structural baseline analytics...</div>
+            
+            <div class="custom-legend-matrix">
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <div class="legend-item"><div class="legend-box" style="background: var(--color-rrsp);"></div>RRSP Layer</div>
+                    <div class="legend-item"><div class="legend-box" style="background: var(--color-tfsa);"></div>TFSA Layer</div>
+                    <div class="legend-item"><div class="legend-box" style="background: var(--color-other-sav);"></div>Other Savings</div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <div class="legend-item"><div class="legend-box" style="background: var(--color-cpp);"></div>CPP Flow</div>
+                    <div class="legend-item"><div class="legend-box" style="background: var(--color-other-inc);"></div>Other Income</div>
+                    <div class="legend-item"><div class="legend-dash"></div>Target Path</div>
+                </div>
+            </div>
+
+            <button id="btnDownloadExcel" type="button" class="btn-excel">📥 Export Report (Excel)</button>
+            <p style="font-size: 10px; color: var(--text-muted); margin: 6px 0 0 0; line-height: 1.4;">
+                Exports a detailed year-by-year analysis including your portfolio trajectory, account balances, and full cash drawdown table across your retirement horizon.
+            </p>
+        </div>
+
+        <div class="chart-column">
+            <div class="chart-wrapper">
+                <canvas id="trajectoryChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="disclaimer-container">
+        <strong>Disclaimer Notice:</strong> This calculator is an open-source modeling utility provided for generic illustrative purposes only. The mathematical simulations generated by this engine do not calculate marginal taxation rules, post-retirement tax clawbacks, capital gains treatment, inheritance taxes, or provincial advisory fees. Calculations are based entirely on flat interest inputs entered by the user. This software does not constitute formal financial advice. Please consult a registered financial planner or certified public accountant before enacting long-term investment changes.
+    </div>
+
+    <div class="signature-footer">
+        Powered by <a href="https://www.linkedin.com/in/nitesh-gupta-77402613/" target="_blank">NuVista Analytics</a>
+    </div>
+</div>
+
+<script>
+    let chartInstance = null;
+    let computedDataLog = [];
+    let stateIsWellFunded = false;
+    let currentCalculatedShortfall = 0;
+    let previouslySuccessful = false;
+
+    function setupSync(sliderId, inputId) {
+        const slider = document.getElementById(sliderId);
+        const input = document.getElementById(inputId);
+        slider.addEventListener('input', () => { input.value = slider.value; executeProjection(); });
+        input.addEventListener('input', () => { slider.value = input.value; executeProjection(); });
+    }
+    setupSync('sliderRRSP', 'inputRRSP');
+    setupSync('sliderTFSA', 'inputTFSA');
+    setupSync('sliderOther', 'inputOther');
+
+    const inputBindIds = [
+        'currentAge', 'retirementAge', 'lifeExpectancy', 'currentIncome', 'desiredIncome',
+        'currentRRSP', 'currentTFSA', 'currentOther', 'cppIncome', 'otherInflows',
+        'rateAccum', 'rateDecum', 'rateInflation', 'userName'
+    ];
+    inputBindIds.forEach(id => {
+        document.getElementById(id).addEventListener('input', executeProjection);
+    });
+
+    function playSuccessChime() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            
+            let osc1 = ctx.createOscillator(); let gain1 = ctx.createGain();
+            osc1.type = 'triangle'; osc1.frequency.setValueAtTime(523.25, ctx.currentTime);
+            gain1.gain.setValueAtTime(0.12, ctx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+            osc1.connect(gain1); gain1.connect(ctx.destination);
+            osc1.start(); osc1.stop(ctx.currentTime + 0.4);
+
+            setTimeout(() => {
+                let osc2 = ctx.createOscillator(); let gain2 = ctx.createGain();
+                osc2.type = 'sine'; osc2.frequency.setValueAtTime(659.25, ctx.currentTime);
+                gain2.gain.setValueAtTime(0.12, ctx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+                osc2.connect(gain2); gain2.connect(ctx.destination);
+                osc2.start(); osc2.stop(ctx.currentTime + 0.4);
+            }, 100);
+
+            setTimeout(() => {
+                let osc3 = ctx.createOscillator(); let gain3 = ctx.createGain();
+                osc3.type = 'sine'; osc3.frequency.setValueAtTime(783.99, ctx.currentTime);
+                gain3.gain.setValueAtTime(0.18, ctx.currentTime);
+                gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+                osc3.connect(gain3); gain3.connect(ctx.destination);
+                osc3.start(); osc3.stop(ctx.currentTime + 0.6);
+            }, 200);
+        } catch (e) {
+            console.warn("Audio Context Contextual Interruption:", e);
+        }
+    }
+
+    // Re-engineered Core Deterministic Engine
+    function executeProjection() {
+        const currentAge = Math.max(18, parseInt(document.getElementById('currentAge').value) || 46);
+        let retirementAge = parseInt(document.getElementById('retirementAge').value) || 65;
+        let lifeExpectancy = parseInt(document.getElementById('lifeExpectancy').value) || 95;
+
+        if (retirementAge <= currentAge) {
+            retirementAge = currentAge + 1;
+            document.getElementById('retirementAge').value = retirementAge;
+        }
+
+        // Use a working variable for calculations — never overwrite the life expectancy
+        // field when retirement age changes, as that breaks mobile editing.
+        const effectiveLifeExpectancy = Math.max(lifeExpectancy, retirementAge + 1);
+
+        const desiredIncome = Math.max(0, parseFloat(document.getElementById('desiredIncome').value) || 0);
+        const initRRSP = Math.max(0, parseFloat(document.getElementById('currentRRSP').value) || 0);
+        const initTFSA = Math.max(0, parseFloat(document.getElementById('currentTFSA').value) || 0);
+        const initOther = Math.max(0, parseFloat(document.getElementById('currentOther').value) || 0);
+
+        const contRRSP = Math.max(0, parseFloat(document.getElementById('inputRRSP').value) || 0);
+        const contTFSA = Math.max(0, parseFloat(document.getElementById('inputTFSA').value) || 0);
+        const contOther = Math.max(0, parseFloat(document.getElementById('inputOther').value) || 0);
+
+        const cppIncome = Math.max(0, parseFloat(document.getElementById('cppIncome').value) || 0);
+        const otherInflows = Math.max(0, parseFloat(document.getElementById('otherInflows').value) || 0);
+
+        const rAccum = Math.max(0, parseFloat(document.getElementById('rateAccum').value) || 5.5) / 100;
+        const rDecum = Math.max(0, parseFloat(document.getElementById('rateDecum').value) || 4.0) / 100;
+        const rInflation = Math.max(0, parseFloat(document.getElementById('rateInflation').value) || 2.5) / 100;
+
+        computedDataLog = [];
+
+        // 1. ANCHORED DRAWDOWN PASS: Calculate actual spending liability requirements
+        let targetRequirementsArray = {};
+        let trackingShortfallNeed = 0;
+
+        // Calculate baseline absolute requirement starting from maximum life expectancy point backwards
+        for (let age = effectiveLifeExpectancy; age >= currentAge; age--) {
+            if (age >= retirementAge) {
+                const compoundingInflation = Math.pow(1 + rInflation, age - retirementAge);
+                const netCashDeficit = Math.max(0, (desiredIncome * compoundingInflation) - ((cppIncome + otherInflows) * compoundingInflation));
+                trackingShortfallNeed = (trackingShortfallNeed / (1 + rDecum)) + netCashDeficit;
+                targetRequirementsArray[age] = trackingShortfallNeed;
+            } else {
+                // Ensure accumulation parameters are cleanly skipped from the display line array
+                targetRequirementsArray[age] = null;
+            }
+        }
+
+        // 2. FORWARD ASSET SIMULATION PASS
+        let rrsp = initRRSP;
+        let tfsa = initTFSA;
+        let otherHoldings = initOther;
+        let assetShortfallTriggered = false;
+
+        for (let age = currentAge; age <= effectiveLifeExpectancy; age++) {
+            let activeRrspOut = 0, activeTfsaOut = 0, activeOtherOut = 0;
+            let activeCppOut = 0, activeInflowOut = 0;
+
+            if (age < retirementAge) {
+                rrsp = (rrsp + contRRSP) * (1 + rAccum);
+                tfsa = (tfsa + contTFSA) * (1 + rAccum);
+                otherHoldings = (otherHoldings + contOther) * (1 + rAccum);
+            } else {
+                rrsp = rrsp * (1 + rDecum);
+                tfsa = tfsa * (1 + rDecum);
+                otherHoldings = otherHoldings * (1 + rDecum);
+
+                const currentInflationMultiplier = Math.pow(1 + rInflation, age - retirementAge);
+                activeCppOut = cppIncome * currentInflationMultiplier;
+                activeInflowOut = otherInflows * currentInflationMultiplier;
+
+                let remainingDeficit = (desiredIncome * currentInflationMultiplier) - (activeCppOut + activeInflowOut);
+
+                if (remainingDeficit > 0) {
+                    if (otherHoldings >= remainingDeficit) { activeOtherOut = remainingDeficit; otherHoldings -= remainingDeficit; remainingDeficit = 0; }
+                    else { activeOtherOut = otherHoldings; remainingDeficit -= otherHoldings; otherHoldings = 0; }
+                }
+                if (remainingDeficit > 0) {
+                    if (tfsa >= remainingDeficit) { activeTfsaOut = remainingDeficit; tfsa -= remainingDeficit; remainingDeficit = 0; }
+                    else { activeTfsaOut = tfsa; remainingDeficit -= tfsa; tfsa = 0; }
+                }
+                if (remainingDeficit > 0) {
+                    if (rrsp >= remainingDeficit) { activeRrspOut = remainingDeficit; rrsp -= remainingDeficit; remainingDeficit = 0; }
+                    else { activeRrspOut = rrsp; remainingDeficit -= rrsp; rrsp = 0; }
+                }
+                if (remainingDeficit > 0) assetShortfallTriggered = true;
+            }
+
+            const totalAssetsAtAge = rrsp + tfsa + otherHoldings;
+
+            computedDataLog.push({
+                age: age,
+                rrsp: Math.max(0, rrsp),
+                tfsa: Math.max(0, tfsa),
+                otherSavings: Math.max(0, otherHoldings),
+                cppPaid: activeCppOut,
+                otherIncomePaid: activeInflowOut,
+                drawdownRrsp: activeRrspOut,
+                drawdownTfsa: activeTfsaOut,
+                drawdownOther: activeOtherOut,
+                totalWealth: totalAssetsAtAge,
+                targetLineValue: targetRequirementsArray[age]
+            });
+        }
+
+        const initialTargetRequiredAtRetirement = targetRequirementsArray[retirementAge] || 0;
+        const totalActualAssetsAtRetirement = computedDataLog.find(d => d.age === retirementAge)?.totalWealth || 0;
+        
+        currentCalculatedShortfall = Math.max(0, initialTargetRequiredAtRetirement - totalActualAssetsAtRetirement);
+        stateIsWellFunded = (currentCalculatedShortfall <= 0.01) && !assetShortfallTriggered;
+
+        if (stateIsWellFunded && !previouslySuccessful) {
+            playSuccessChime();
+            confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
+            previouslySuccessful = true;
+        } else if (!stateIsWellFunded) {
+            previouslySuccessful = false;
+        }
+
+        const headerContainer = document.getElementById('forecastHeader');
+        const textContainer = document.getElementById('forecastSubtext');
+
+        if (stateIsWellFunded) {
+            headerContainer.textContent = "Looking Great!";
+            headerContainer.style.color = "#10b981";
+            textContainer.innerHTML = `Your plan is fully funded up to age ${effectiveLifeExpectancy}! Your layers securely scale past your baseline targets.`;
+        } else {
+            headerContainer.textContent = "Almost there.";
+            headerContainer.style.color = "var(--primary)";
+            textContainer.innerHTML = `You are short at retirement by about <strong>$${Math.round(currentCalculatedShortfall).toLocaleString()}</strong>. Adjust your targets to help the account curves scale above the red milestone line.`;
+        }
+
+        renderChartVisuals(currentAge, retirementAge, effectiveLifeExpectancy);
+    }
+
+    // Chart.js Stacked Mapping Configuration (Zero Border Stroke Mode)
+    function renderChartVisuals(currentAge, retirementAge, lifeExpectancy) {
+        const labels = computedDataLog.map(d => `Age ${d.age}`);
+        if (chartInstance) chartInstance.destroy();
+
+        const ctx = document.getElementById('trajectoryChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'What You Need (Target Path Line)',
+                        data: computedDataLog.map(d => d.targetLineValue),
+                        borderColor: 'rgba(220, 38, 38, 1)', 
+                        borderWidth: 4,
+                        borderDash: [6, 4],
+                        fill: false,
+                        pointRadius: 0,
+                        order: 10,
+                        stack: 'target'
+                    },
+                    {
+                        label: 'RRSP Account Balance',
+                        data: computedDataLog.map(d => d.rrsp),
+                        borderWidth: 0, // Cleared line edge stroke artifacts
+                        backgroundColor: 'rgba(30, 58, 138, 0.7)',
+                        fill: true, pointRadius: 0, order: 2,
+                        stack: 'assets'
+                    },
+                    {
+                        label: 'TFSA Account Balance',
+                        data: computedDataLog.map(d => d.tfsa),
+                        borderWidth: 0,
+                        backgroundColor: 'rgba(13, 148, 136, 0.7)',
+                        fill: true, pointRadius: 0, order: 3,
+                        stack: 'assets'
+                    },
+                    {
+                        label: 'Other Savings Balance',
+                        data: computedDataLog.map(d => d.otherSavings),
+                        borderWidth: 0,
+                        backgroundColor: 'rgba(124, 58, 237, 0.6)',
+                        fill: true, pointRadius: 0, order: 4,
+                        stack: 'assets'
+                    },
+                    {
+                        label: 'CPP Benefit Flow',
+                        data: computedDataLog.map(d => d.cppPaid),
+                        borderWidth: 0,
+                        backgroundColor: 'rgba(180, 83, 9, 0.6)',
+                        fill: true, pointRadius: 0, order: 5,
+                        stack: 'assets'
+                    },
+                    {
+                        label: 'Other Inflow',
+                        data: computedDataLog.map(d => d.otherIncomePaid),
+                        borderWidth: 0,
+                        backgroundColor: 'rgba(6, 95, 70, 0.6)',
+                        fill: true, pointRadius: 0, order: 6,
+                        stack: 'assets'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        stacked: true,
+                        title: { display: true, text: 'Portfolio Assets & Inflows Position ($)' },
+                        ticks: {
+                            callback: value => value >= 1000000 ? '$' + (value / 1000000).toFixed(1) + 'M' : '$' + (value / 1000).toFixed(0) + 'k'
+                        }
+                    }
+                }
+            }
+        });
+
+        const originalDraw = chartInstance.draw;
+        chartInstance.draw = function() {
+            originalDraw.apply(this, arguments);
+            const xAxis = chartInstance.scales.x;
+            const yAxis = chartInstance.scales.y;
+            const checkLabel = `Age ${retirementAge}`;
+            const xPixelValue = xAxis.getPixelForValue(checkLabel);
+            
+            if (xPixelValue >= xAxis.left && xPixelValue <= xAxis.right) {
+                const canvasCtx = chartInstance.ctx;
+                canvasCtx.save();
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(xPixelValue, yAxis.top);
+                canvasCtx.lineTo(xPixelValue, yPixelValue = yAxis.bottom);
+                canvasCtx.lineWidth = 2;
+                canvasCtx.strokeStyle = '#475569';
+                canvasCtx.setLineDash([4, 4]);
+                canvasCtx.stroke();
+                
+                canvasCtx.fillStyle = '#475569';
+                canvasCtx.font = 'bold 10px sans-serif';
+                canvasCtx.fillText('RETIREMENT STARTED', xPixelValue + 6, yAxis.top + 14);
+                canvasCtx.restore();
+            }
+        };
+    }
+
+    // SheetJS Spreadsheets Core Integration Engine
+    function exportToFormattedExcel() {
+        const wb = XLSX.utils.book_new();
+        const wsData = [];
+        
+        const timestamp = new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto', hour12: true });
+        const name = document.getElementById('userName').value.toUpperCase();
+
+        wsData.push([`RETIREMENT FORECAST STRATEGY REPORT FOR: ${name}`]);
+        wsData.push([`Analysis Generation Timestamp: ${timestamp} (EST)`]);
+        wsData.push([""]);
+
+        wsData.push(["EXECUTIVE METRICS MATRIX SUMMARY"]);
+        wsData.push(["Plan Verdict Funding Status", stateIsWellFunded ? "WELL FUNDED / PLAN SUCCESSFUL" : "PLAN SHORTFALL DETECTED"]);
+        wsData.push(["Calculated Net Asset Shortfall at Retirement Target", currentCalculatedShortfall]);
+        wsData.push(["Current Active Age", parseInt(document.getElementById('currentAge').value)]);
+        wsData.push(["Target Retirement Age Target", parseInt(document.getElementById('retirementAge').value)]);
+        wsData.push(["Simulated Lifetime Age Expectancy Horizon", parseInt(document.getElementById('lifeExpectancy').value)]);
+        wsData.push([""]);
+
+        wsData.push(["INPUT PROFILE MATRIX ACCOUNT SPECIFICATIONS"]);
+        wsData.push(["Current Active Annual Base Salary", parseFloat(document.getElementById('currentIncome').value)]);
+        wsData.push(["Desired Annual Retirement Living Cost", parseFloat(document.getElementById('desiredIncome').value)]);
+        wsData.push(["Initial Seed RRSP Balance", parseFloat(document.getElementById('currentRRSP').value)]);
+        wsData.push(["Planned Recurring Annual RRSP Savings", parseFloat(document.getElementById('inputRRSP').value)]);
+        wsData.push(["Initial Seed TFSA Balance", parseFloat(document.getElementById('currentTFSA').value)]);
+        wsData.push(["Planned Recurring Annual TFSA Savings", parseFloat(document.getElementById('inputTFSA').value)]);
+        wsData.push(["Initial Seed Other Savings Balance", parseFloat(document.getElementById('currentOther').value)]);
+        wsData.push(["Planned Recurring Annual Other Savings", parseFloat(document.getElementById('inputOther').value)]);
+        wsData.push(["Estimated Annual CPP Benefit Flow Inflow", parseFloat(document.getElementById('cppIncome').value)]);
+        wsData.push(["Other Annual Post-Retirement Cash Inflow", parseFloat(document.getElementById('otherInflows').value)]);
+        wsData.push(["Pre-Retirement Capital Growth Yield %", parseFloat(document.getElementById('rateAccum').value) / 100]);
+        wsData.push(["In-Retirement Capital Growth Yield %", parseFloat(document.getElementById('rateDecum').value) / 100]);
+        wsData.push(["Assumed Structural Cost of Living Inflation %", parseFloat(document.getElementById('rateInflation').value) / 100]);
+        wsData.push([""]);
+
+        wsData.push(["YEAR-BY-YEAR DATA TIMELINE PROJECTION MATRIX GRID"]);
+        const dataHeaderRowIndex = wsData.length;
+        wsData.push([
+            "Age", "Target Portfolio Line ($)", "RRSP Holding ($)", "TFSA Holding ($)", 
+            "Other Savings Balance ($)", "Total Wealth Balance ($)", "CPP Flow ($)", 
+            "Other Inflow ($)", "RRSP Drawn ($)", "TFSA Drawn ($)", "Other Drawn ($)"
+        ]);
+
+        computedDataLog.forEach(row => {
+            wsData.push([
+                row.age, row.targetLineValue || 0, row.rrsp, row.tfsa, row.otherSavings, 
+                row.totalWealth, row.cppPaid, row.otherIncomePaid, 
+                row.drawdownRrsp, row.drawdownTfsa, row.drawdownOther
+            ]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { rgb: "0F172A" } };
+        const headerFont = { color: { rgb: "FFFFFF" }, bold: true, size: 11 };
+        const sectionFont = { color: { rgb: "1E3A8A" }, bold: true, size: 12 };
+        const currencyFormat = '"$"#,##0.00';
+        const percentFormat = '0.00%';
+        const currencyRows = [5, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+        const percentRows = [21, 22, 23];
+
+        for (let cellRef in ws) {
+            if (cellRef[0] === '!') continue;
+            const cell = ws[cellRef];
+            const rowIndex = parseInt(cellRef.replace(/^[A-Z]+/, '')) - 1;
+            const colLetter = cellRef.match(/^[A-Z]+/)[0];
+
+            if (rowIndex === 0) {
+                cell.s = { font: { bold: true, size: 14, color: { rgb: "0284C7" } } };
+                continue;
+            }
+
+            if (cell.v === "EXECUTIVE METRICS MATRIX SUMMARY" || cell.v === "INPUT PROFILE MATRIX ACCOUNT SPECIFICATIONS" || cell.v === "YEAR-BY-YEAR DATA TIMELINE PROJECTION MATRIX GRID") {
+                cell.s = { font: sectionFont };
+                continue;
+            }
+
+            if (rowIndex === 4 && colLetter === 'B') {
+                const checkSuccess = cell.v.includes("WELL FUNDED");
+                cell.s = {
+                    font: { bold: true, color: { rgb: checkSuccess ? "065F46" : "991B1B" } },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { rgb: checkSuccess ? "D1FAE5" : "FEE2E2" } }
+                };
+                continue;
+            }
+
+            if (colLetter === 'B' && currencyRows.includes(rowIndex)) {
+                cell.t = 'n';
+                cell.z = currencyFormat;
+                continue;
+            }
+
+            if (colLetter === 'B' && percentRows.includes(rowIndex)) {
+                cell.t = 'n';
+                cell.z = percentFormat;
+                continue;
+            }
+
+            if (rowIndex === dataHeaderRowIndex) {
+                cell.s = { fill: headerFill, font: headerFont, alignment: { horizontal: "center" } };
+            } else if (rowIndex > dataHeaderRowIndex) {
+                if (colLetter !== 'A') {
+                    cell.t = 'n';
+                    cell.z = currencyFormat;
+                }
+            }
+        }
+
+        ws['!cols'] = [
+            { wch: 6 }, { wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 24 }, 
+            { wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 16 }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, "Forecast Data Matrix");
+        XLSX.writeFile(wb, `Retirement_Strategy_Report_${name.replace(/\s+/g, '_')}.xlsx`);
+    }
+
+    document.getElementById('btnDownloadExcel').addEventListener('click', exportToFormattedExcel);
+
+    // Run Engine Calculation Loop On Bootstrap
+    executeProjection();
+</script>
+</body>
+</html>
